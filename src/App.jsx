@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, useMapEvents, Marker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
-import { MapPin, Wind, Navigation, AlertCircle } from 'lucide-react';
+import { MapPin, Wind, Navigation, AlertCircle, Search } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import './index.css';
 
@@ -71,6 +71,8 @@ export default function App() {
   const [error, setError] = useState(null);
   const [location, setLocation] = useState(null);
   const [liveMarkers, setLiveMarkers] = useState([]);
+  const [searchInput, setSearchInput] = useState('');
+  const [searchSuggestions, setSearchSuggestions] = useState([]);
   const themeClass = getAQITheme(aqi);
 
   useEffect(() => {
@@ -122,6 +124,56 @@ export default function App() {
     }
   };
 
+  const handleSearchChange = (e) => {
+    const query = e.target.value.toLowerCase();
+    setSearchInput(e.target.value);
+
+    if (query.trim() === '') {
+      setSearchSuggestions([]);
+      return;
+    }
+
+    // Filter major cities
+    const citySuggestions = MAJOR_CITIES.filter(city =>
+      city.name.toLowerCase().includes(query)
+    );
+
+    setSearchSuggestions(citySuggestions);
+  };
+
+  const handleSelectLocation = async (city) => {
+    setSearchInput('');
+    setSearchSuggestions([]);
+    setLocation({ lat: city.lat.toFixed(4), lng: city.lng.toFixed(4) });
+    await fetchAQI(city.lat, city.lng);
+  };
+
+  const handleSearchSubmit = async (e) => {
+    if (e.key === 'Enter' && searchInput.trim()) {
+      setSearchInput('');
+      setSearchSuggestions([]);
+      
+      try {
+        const resp = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchInput)}&format=json&limit=1`
+        );
+        const data = await resp.json();
+        
+        if (data.length > 0) {
+          const lat = parseFloat(data[0].lat);
+          const lng = parseFloat(data[0].lon);
+          setLocation({ lat: lat.toFixed(4), lng: lng.toFixed(4) });
+          await fetchAQI(lat, lng);
+        } else {
+          setError('Location not found. Try another search.');
+        }
+      } catch (err) {
+        console.error('Geocoding error:', err);
+        setError('Failed to search location');
+      }
+    }
+  };
+
   return (
     <div className={`App ${themeClass}`} style={{ width: '100vw', height: '100vh', position: 'relative' }}>
       <div className="map-container">
@@ -152,6 +204,34 @@ export default function App() {
           <div className="header">
             <h1><Wind className="pulse-icon" style={{ display: 'inline-block', width: '32px', height:'32px', verticalAlign: 'middle', marginRight: '8px' }}/> <span className="highlight">AirSense</span></h1>
             <p>Global Air Quality Index</p>
+          </div>
+
+          <div className="search-container">
+            <div className="search-input-wrapper">
+              <Search size={18} className="search-icon" />
+              <input
+                type="text"
+                placeholder="Search for a location..."
+                value={searchInput}
+                onChange={handleSearchChange}
+                onKeyDown={handleSearchSubmit}
+                className="search-input"
+              />
+            </div>
+            {searchSuggestions.length > 0 && (
+              <div className="search-suggestions">
+                {searchSuggestions.map((city, idx) => (
+                  <div
+                    key={idx}
+                    className="suggestion-item"
+                    onClick={() => handleSelectLocation(city)}
+                  >
+                    <MapPin size={14} />
+                    <span>{city.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="aqi-display">
